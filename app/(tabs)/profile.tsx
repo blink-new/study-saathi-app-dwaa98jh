@@ -16,8 +16,45 @@ import {
   Moon,
   Smartphone
 } from 'lucide-react-native';
+import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import EditProfileModal from '@/components/EditProfileModal';
+
+const PROFILE_STORAGE_KEY = 'profile_data';
 
 export default function Profile() {
+  const [profile, setProfile] = useState({ 
+    name: 'Priya Sharma', 
+    class: 'Class 12, Science Stream', 
+    school: 'Delhi Public School' 
+  });
+  const [modalVisible, setModalVisible] = useState(false);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      const jsonValue = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
+      if (jsonValue != null) {
+        setProfile(JSON.parse(jsonValue));
+      }
+    } catch (e) {
+      console.error('Failed to load profile', e);
+    }
+  };
+
+  const handleSaveProfile = async (newProfile) => {
+    try {
+      const jsonValue = JSON.stringify(newProfile);
+      await AsyncStorage.setItem(PROFILE_STORAGE_KEY, jsonValue);
+      setProfile(newProfile);
+    } catch (e) {
+      console.error('Failed to save profile', e);
+    }
+  };
+
   const stats = [
     { label: 'Total Notes', value: '68', icon: BookOpen, color: '#007AFF' },
     { label: 'Completed Tasks', value: '24', icon: Trophy, color: '#34C759' },
@@ -43,33 +80,38 @@ export default function Profile() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <EditProfileModal 
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSave={handleSaveProfile}
+        currentProfile={profile}
+      />
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
           <Text style={styles.title}>Profile</Text>
-          <TouchableOpacity 
-            style={styles.settingsButton}
-            onPress={() => console.log('Settings pressed')}
-          >
+          <TouchableOpacity style={styles.settingsButton} onPress={() => setModalVisible(true)}>
             <Settings size={20} color="#007AFF" />
           </TouchableOpacity>
         </Animated.View>
 
         {/* Profile Info */}
         <Animated.View entering={FadeInDown.duration(600).delay(100)} style={styles.profileSection}>
-          <View style={styles.profileCard}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <User size={32} color="#FFFFFF" />
+          <TouchableOpacity onPress={() => setModalVisible(true)}>
+            <View style={styles.profileCard}>
+              <View style={styles.avatarContainer}>
+                <View style={styles.avatar}>
+                  <User size={32} color="#FFFFFF" />
+                </View>
+                <View style={styles.onlineIndicator} />
               </View>
-              <View style={styles.onlineIndicator} />
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{profile.name}</Text>
+                <Text style={styles.profileClass}>{profile.class}</Text>
+                <Text style={styles.profileSchool}>{profile.school}</Text>
+              </View>
             </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>Priya Sharma</Text>
-              <Text style={styles.profileClass}>Class 12, Science Stream</Text>
-              <Text style={styles.profileSchool}>Delhi Public School</Text>
-            </View>
-          </View>
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Stats Grid */}

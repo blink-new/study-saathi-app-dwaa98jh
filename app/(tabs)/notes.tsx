@@ -1,56 +1,111 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
-import { Plus, Search, BookOpen, FileText, Image, Video, Filter } from 'lucide-react-native';
+import { Plus, Search, BookOpen, FileText, Image, Video, Filter, Trash2 } from 'lucide-react-native';
+import { useState, useEffect, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import AddNoteModal from '@/components/AddNoteModal';
+
+const NOTES_STORAGE_KEY = 'notes_data';
+
+const initialNotes = [
+  {
+    id: 1,
+    title: 'Quadratic Equations - Chapter 4',
+    subject: 'Mathematics',
+    type: 'text',
+    content: 'A quadratic equation is a polynomial equation of degree 2. The general form is ax² + bx + c = 0...',
+    lastModified: '2 hours ago',
+    color: '#007AFF'
+  },
+  {
+    id: 2,
+    title: 'Newton\'s Laws of Motion',
+    subject: 'Physics',
+    type: 'text',
+    content: 'First Law: An object at rest stays at rest and an object in motion stays in motion...',
+    lastModified: '1 day ago',
+    color: '#34C759'
+  },
+];
 
 export default function Notes() {
-  const subjects = [
-    { id: 1, name: 'Mathematics', color: '#007AFF', noteCount: 15, lastUpdated: '2 hours ago' },
-    { id: 2, name: 'Physics', color: '#34C759', noteCount: 12, lastUpdated: '1 day ago' },
-    { id: 3, name: 'Chemistry', color: '#FF3B30', noteCount: 8, lastUpdated: '3 hours ago' },
-    { id: 4, name: 'History', color: '#AF52DE', noteCount: 10, lastUpdated: '2 days ago' },
-    { id: 5, name: 'English', color: '#FF9500', noteCount: 6, lastUpdated: '5 hours ago' },
-    { id: 6, name: 'Biology', color: '#00C7BE', noteCount: 9, lastUpdated: '1 day ago' },
-  ];
+  const [notes, setNotes] = useState(initialNotes);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const recentNotes = [
-    {
-      id: 1,
-      title: 'Quadratic Equations - Chapter 4',
-      subject: 'Mathematics',
-      type: 'text',
-      preview: 'A quadratic equation is a polynomial equation of degree 2. The general form is ax² + bx + c = 0...',
-      lastModified: '2 hours ago',
-      color: '#007AFF'
-    },
-    {
-      id: 2,
-      title: 'Newton\'s Laws of Motion',
-      subject: 'Physics',
-      type: 'text',
-      preview: 'First Law: An object at rest stays at rest and an object in motion stays in motion...',
-      lastModified: '1 day ago',
-      color: '#34C759'
-    },
-    {
-      id: 3,
-      title: 'Periodic Table Elements',
-      subject: 'Chemistry',
-      type: 'image',
-      preview: 'Periodic table diagram with electron configurations',
-      lastModified: '3 hours ago',
-      color: '#FF3B30'
-    },
-    {
-      id: 4,
-      title: 'World War II Timeline',
-      subject: 'History',
-      type: 'text',
-      preview: '1939-1945: Major events and turning points of the Second World War...',
-      lastModified: '2 days ago',
-      color: '#AF52DE'
-    },
-  ];
+  useEffect(() => {
+    loadNotes();
+  }, []);
+
+  useEffect(() => {
+    saveNotes();
+  }, [notes]);
+
+  const loadNotes = async () => {
+    try {
+      const jsonValue = await AsyncStorage.getItem(NOTES_STORAGE_KEY);
+      if (jsonValue != null) {
+        setNotes(JSON.parse(jsonValue));
+      }
+    } catch (e) {
+      console.error('Failed to load notes', e);
+    }
+  };
+
+  const saveNotes = async () => {
+    try {
+      const jsonValue = JSON.stringify(notes);
+      await AsyncStorage.setItem(NOTES_STORAGE_KEY, jsonValue);
+    } catch (e) {
+      console.error('Failed to save notes', e);
+    }
+  };
+
+  const handleSaveNote = (noteData) => {
+    if (editingNote) {
+      setNotes(prev => prev.map(n => n.id === editingNote.id ? { ...n, ...noteData, lastModified: 'Just now' } : n));
+    } else {
+      const newNote = {
+        id: Date.now(),
+        type: 'text',
+        ...noteData,
+        lastModified: 'Just now',
+        color: '#007AFF' // Default color for new notes
+      };
+      setNotes(prev => [newNote, ...prev]);
+    }
+    setEditingNote(null);
+  };
+
+  const handleDeleteNote = (id) => {
+    Alert.alert('Delete Note', 'Are you sure you want to delete this note?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => {
+        setNotes(prev => prev.filter(n => n.id !== id));
+      } }
+    ]);
+  };
+
+  const filteredNotes = useMemo(() => {
+    return notes.filter(note => 
+      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.content.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [notes, searchQuery]);
+
+  const subjects = useMemo(() => {
+    const subjectMap = new Map();
+    notes.forEach(note => {
+      if (!subjectMap.has(note.subject)) {
+        subjectMap.set(note.subject, { name: note.subject, noteCount: 0, color: note.color || '#8E8E93' });
+      }
+      subjectMap.get(note.subject).noteCount++;
+    });
+    return Array.from(subjectMap.values());
+  }, [notes]);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -63,21 +118,21 @@ export default function Notes() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <AddNoteModal 
+        visible={modalVisible} 
+        onClose={() => { setModalVisible(false); setEditingNote(null); }} 
+        onSave={handleSaveNote}
+        editingNote={editingNote}
+      />
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
           <Text style={styles.title}>Notes</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.filterButton}
-              onPress={() => console.log('Filter notes pressed')}
-            >
+            <TouchableOpacity style={styles.filterButton}>
               <Filter size={20} color="#007AFF" />
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.addButton}
-              onPress={() => console.log('Add note pressed')}
-            >
+            <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
               <Plus size={20} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
@@ -91,6 +146,8 @@ export default function Notes() {
               style={styles.searchInput}
               placeholder="Search notes..."
               placeholderTextColor="#8E8E93"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
             />
           </View>
         </Animated.View>
@@ -101,21 +158,17 @@ export default function Notes() {
           <View style={styles.subjectsGrid}>
             {subjects.map((subject, index) => (
               <Animated.View 
-                key={subject.id}
+                key={index}
                 entering={FadeInRight.duration(400).delay(50 * index)}
                 style={styles.subjectCard}
               >
-                <TouchableOpacity 
-                  style={styles.subjectButton}
-                  onPress={() => console.log('Subject pressed:', subject.name)}
-                >
+                <TouchableOpacity style={styles.subjectButton}>
                   <View style={[styles.subjectIcon, { backgroundColor: subject.color }]}>
                     <BookOpen size={24} color="#FFFFFF" />
                   </View>
                   <Text style={styles.subjectName}>{subject.name}</Text>
                   <View style={styles.subjectMeta}>
                     <Text style={styles.noteCount}>{subject.noteCount} notes</Text>
-                    <Text style={styles.lastUpdated}>{subject.lastUpdated}</Text>
                   </View>
                 </TouchableOpacity>
               </Animated.View>
@@ -126,14 +179,9 @@ export default function Notes() {
         {/* Recent Notes */}
         <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Notes</Text>
-            <TouchableOpacity 
-              onPress={() => console.log('See all notes pressed')}
-            >
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>All Notes</Text>
           </View>
-          {recentNotes.map((note, index) => {
+          {filteredNotes.map((note, index) => {
             const TypeIcon = getTypeIcon(note.type);
             return (
               <Animated.View 
@@ -143,7 +191,10 @@ export default function Notes() {
               >
                 <TouchableOpacity 
                   style={styles.noteContent}
-                  onPress={() => console.log('Note pressed:', note.title)}
+                  onPress={() => {
+                    setEditingNote(note);
+                    setModalVisible(true);
+                  }}
                 >
                   <View style={styles.noteHeader}>
                     <View style={[styles.noteTypeIcon, { backgroundColor: note.color + '20' }]}>
@@ -153,50 +204,17 @@ export default function Notes() {
                       <Text style={styles.noteTitle}>{note.title}</Text>
                       <Text style={styles.noteSubject}>{note.subject}</Text>
                     </View>
-                    <Text style={styles.noteTime}>{note.lastModified}</Text>
+                    <TouchableOpacity onPress={() => handleDeleteNote(note.id)} style={{ padding: 4 }}>
+                      <Trash2 size={18} color="#FF3B30" />
+                    </TouchableOpacity>
                   </View>
                   <Text style={styles.notePreview} numberOfLines={2}>
-                    {note.preview}
+                    {note.content}
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
             );
           })}
-        </Animated.View>
-
-        {/* Quick Actions */}
-        <Animated.View entering={FadeInDown.duration(600).delay(600)} style={styles.quickActions}>
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => console.log('Text note pressed')}
-          >
-            <View style={styles.actionIcon}>
-              <FileText size={24} color="#007AFF" />
-            </View>
-            <Text style={styles.actionTitle}>Text Note</Text>
-            <Text style={styles.actionSubtitle}>Create a new text note</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => console.log('Photo note pressed')}
-          >
-            <View style={styles.actionIcon}>
-              <Image size={24} color="#34C759" />
-            </View>
-            <Text style={styles.actionTitle}>Photo Note</Text>
-            <Text style={styles.actionSubtitle}>Capture or upload image</Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Study Tips */}
-        <Animated.View entering={FadeInDown.duration(600).delay(700)} style={styles.tipCard}>
-          <View style={styles.tipContent}>
-            <Text style={styles.tipTitle}>💡 Study Tip</Text>
-            <Text style={styles.tipText}>
-              Organize your notes by color-coding subjects. This helps with quick visual recognition and better retention!
-            </Text>
-          </View>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -277,12 +295,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#1C1C1E',
-    marginBottom: 16,
-  },
-  seeAllText: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '500',
   },
   subjectsGrid: {
     flexDirection: 'row',
@@ -327,10 +339,6 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     marginBottom: 4,
   },
-  lastUpdated: {
-    fontSize: 12,
-    color: '#8E8E93',
-  },
   noteCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -371,69 +379,7 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontWeight: '500',
   },
-  noteTime: {
-    fontSize: 12,
-    color: '#8E8E93',
-  },
   notePreview: {
-    fontSize: 14,
-    color: '#8E8E93',
-    lineHeight: 20,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
-  },
-  actionCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  actionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F2F2F7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1C1C1E',
-    marginBottom: 4,
-  },
-  actionSubtitle: {
-    fontSize: 12,
-    color: '#8E8E93',
-    textAlign: 'center',
-  },
-  tipCard: {
-    marginHorizontal: 20,
-    backgroundColor: '#E8F5E8',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-  },
-  tipContent: {
-    gap: 8,
-  },
-  tipTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1C1C1E',
-  },
-  tipText: {
     fontSize: 14,
     color: '#8E8E93',
     lineHeight: 20,
